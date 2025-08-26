@@ -1,6 +1,7 @@
-FROM ubuntu:22.04
+# Stage 1: Builder
+FROM ubuntu:22.04 AS builder
 
-# Install dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     git \
@@ -12,13 +13,40 @@ RUN apt-get update && apt-get install -y \
 RUN git clone https://github.com/ggerganov/llama.cpp /llama.cpp
 WORKDIR /llama.cpp
 
+# Build with optimized settings
 RUN cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
     -DLLAMA_NATIVE=OFF \
     -DLLAMA_AVX2=OFF \
+    -DLLAMA_BUILD_TESTS=OFF \
+    -DLLAMA_BUILD_EXAMPLES=OFF \
     && cmake --build build --config Release -j$(nproc)
+
+# Stage 2: Runtime
+FROM ubuntu:22.04
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y \
+    libcurl4 \
+    libgomp1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy only the built binary from builder stage
+COPY --from=builder /llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
 
 # Create models directory
 RUN mkdir -p /models
+
+# Create non-root user for security
+RUN useradd -m -u 1000 -s /bin/bash llama && \
+    chown -R llama:llama /models
+
+# Switch to non-root user
+USER llama
+
+# Set working directory
+WORKDIR /models
 
 # Expose ports
 EXPOSE 8083 9090
@@ -28,5 +56,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8083/health || exit 1
 
 # Run server with metrics
-ENTRYPOINT ["./build/bin/llama-server"]
+ENTRYPOINT ["/usr/local/bin/llama-server"]
 CMD ["-m", "/models/model.gguf", "-c", "2048", "--host", "0.0.0.0", "--port", "8083", "--metrics"]
