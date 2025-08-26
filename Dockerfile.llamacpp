@@ -13,27 +13,37 @@ RUN apt-get update && apt-get install -y \
 RUN git clone https://github.com/ggerganov/llama.cpp /llama.cpp
 WORKDIR /llama.cpp
 
-# Build with optimized settings
+# Build with CMake
 RUN cmake -B build \
     -DCMAKE_BUILD_TYPE=Release \
-    -DLLAMA_NATIVE=OFF \
-    -DLLAMA_AVX2=OFF \
+    -DGGML_BLAS=OFF \
+    -DGGML_CUBLAS=OFF \
+    -DGGML_METAL=OFF \
+    -DGGML_HIPBLAS=OFF \
+    -DGGML_ACCELERATE=OFF \
     -DLLAMA_BUILD_TESTS=OFF \
     -DLLAMA_BUILD_EXAMPLES=OFF \
-    && cmake --build build --config Release -j$(nproc)
+    -DLLAMA_BUILD_SERVER=ON \
+    && cmake --build build --config Release --target llama-server -j$(nproc)
 
 # Stage 2: Runtime
 FROM ubuntu:22.04
 
-# Install runtime dependencies only
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     libcurl4 \
     libgomp1 \
+    libstdc++6 \
+    libgcc-s1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only the built binary from builder stage
+# Copy the built binaries AND libraries from builder stage
 COPY --from=builder /llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
+COPY --from=builder /llama.cpp/build/bin/*.so /usr/local/lib/
+
+# Update library cache
+RUN ldconfig
 
 # Create models directory
 RUN mkdir -p /models
