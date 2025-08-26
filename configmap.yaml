@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llamacpp-config
+  namespace: llama-app
+data:
+  server.conf: |
+    # Server configuration
+    threads: 4
+    batch_size: 512
+    context_size: 2048
