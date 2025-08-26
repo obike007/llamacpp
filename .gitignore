@@ -1,0 +1,47 @@
+# Build artifacts
+/build/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+DartConfiguration.tcl
+Testing/
+Makefile
+
+# Generated config files
+llama-config.cmake
+llama-version.cmake
+llama.pc
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+.pytest_cache/
+
+# Models (usually large files)
+*.bin
+*.gguf
+*.ggml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
