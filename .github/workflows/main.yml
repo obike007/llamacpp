@@ -47,7 +47,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Create KIND cluster
+    - name: Create kind cluster
       uses: helm/kind-action@v1.5.0
       with:
         cluster_name: llama-cluster
@@ -62,7 +62,13 @@ jobs:
             - containerPort: 30090
               hostPort: 9090
             - containerPort: 30030
-              hostPort: 3000
+              hostPort: 3001
+        version: v0.17.0
+        wait: 60s
+        verbosity: 0
+        kubectl_version: v1.23.12
+      env:
+        IMAGE_NAME: llamacpp-server
 
     - name: Deploy application
       run: |
