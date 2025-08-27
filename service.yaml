@@ -8,8 +8,8 @@ metadata:
 spec:
   type: NodePort
   ports:
-  - port: 8083
-    targetPort: 8083
+  - port: 8084
+    targetPort: 8084
     nodePort: 30083
     name: http
   selector:
