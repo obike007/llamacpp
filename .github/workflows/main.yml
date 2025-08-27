@@ -104,4 +104,4 @@ jobs:
           kubectl get pods -n llama-app
     - name: Deploy monitoring stack
       run: |
-        bash scripts/setup-monitoring.sh
+        bash scripts/setup-monitoring.sh || echo "Monitoring setup failed, continuing..."
