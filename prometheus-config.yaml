@@ -37,4 +37,4 @@ data:
     
     - job_name: 'llamacpp'
       static_configs:
-      - targets: ['llamacpp-service.llama-app.svc.cluster.local:8083']
+      - targets: ['llamacpp-service.llama-app.svc.cluster.local:8084']
