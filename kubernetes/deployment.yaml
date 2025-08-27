@@ -6,7 +6,7 @@ metadata:
   labels:
     app: llamacpp
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: llamacpp
@@ -14,47 +14,44 @@ spec:
     metadata:
       labels:
         app: llamacpp
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8084"
-        prometheus.io/path: "/metrics"
     spec:
       containers:
-      - name: llamacpp
+      - name: llamacpp-server
         image: DOCKER_HUB_USERNAME/llamacpp-server:IMAGE_TAG
         ports:
-        - containerPort: 8084
+        - containerPort: 8080
           name: http
-        resources:
-          requests:
-            memory: "2Gi"
-            cpu: "1"
-          limits:
-            memory: "4Gi"
-            cpu: "2"
         env:
-        - name: LLAMA_THREADS
-          value: "4"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8084
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8084
-          initialDelaySeconds: 10
-          periodSeconds: 5
+        - name: PORT
+          value: "8080"
+        - name: HOST
+          value: "0.0.0.0"
+        # Temporarily disable resource limits for debugging
+        # resources:
+        #   requests:
+        #     memory: "512Mi"
+        #     cpu: "250m"
+        #   limits:
+        #     memory: "2Gi"
+        #     cpu: "1000m"
+        # Temporarily disable health checks for debugging
+        # livenessProbe:
+        #   httpGet:
+        #     path: /health
+        #     port: 8080
+        #   initialDelaySeconds: 30
+        #   periodSeconds: 10
+        # readinessProbe:
+        #   httpGet:
+        #     path: /health
+        #     port: 8080
+        #   initialDelaySeconds: 5
+        #   periodSeconds: 5
         volumeMounts:
-        - name: models
-          mountPath: /models
         - name: config
-          mountPath: /config
+          mountPath: /app/config
+          readOnly: true
       volumes:
-      - name: models
-        emptyDir: {}
       - name: config
         configMap:
           name: llamacpp-config

@@ -79,20 +79,29 @@ jobs:
 
     - name: Deploy application
       run: |
-        # Update image tag in deployment
-        sed -i "s|IMAGE_TAG|${{ github.sha }}|g" kubernetes/deployment.yaml
-        sed -i "s|DOCKER_HUB_USERNAME|${{ secrets.DOCKER_HUB_USERNAME }}|g" kubernetes/deployment.yaml
-        
-        # Apply Kubernetes manifests
-        kubectl apply -f kubernetes/namespace.yaml
-        kubectl apply -f kubernetes/configmap.yaml
-        kubectl apply -f kubernetes/deployment.yaml
-        kubectl apply -f kubernetes/service.yaml
-        
-        # Wait for deployment
-        kubectl wait --for=condition=available --timeout=300s \
-          deployment/llamacpp -n llama-app
-
+          # Update image tag in deployment
+          sed -i "s|IMAGE_TAG|${{ github.sha }}|g" kubernetes/deployment.yaml
+          sed -i "s|DOCKER_HUB_USERNAME|${{ secrets.DOCKER_HUB_USERNAME }}|g" kubernetes/deployment.yaml
+          
+          # Apply Kubernetes manifests
+          kubectl apply -f kubernetes/namespace.yaml
+          kubectl apply -f kubernetes/configmap.yaml
+          kubectl apply -f kubernetes/deployment.yaml
+          kubectl apply -f kubernetes/service.yaml
+          
+          # Wait for deployment with better timeout
+          echo "Waiting for deployment to be ready..."
+          kubectl wait --for=condition=available --timeout=600s \
+            deployment/llamacpp -n llama-app || {
+            echo "Deployment failed, checking status..."
+            kubectl get pods -n llama-app
+            kubectl describe pods -n llama-app
+            kubectl logs -n llama-app -l app=llamacpp --tail=100
+            exit 1
+          }
+          
+          echo "Deployment successful!"
+          kubectl get pods -n llama-app
     - name: Deploy monitoring stack
       run: |
         bash scripts/setup-monitoring.sh
