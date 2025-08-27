@@ -58,7 +58,7 @@ jobs:
           - role: control-plane
             extraPortMappings:
             - containerPort: 30083
-              hostPort: 8083
+              hostPort: 8084
             - containerPort: 30090
               hostPort: 9090
             - containerPort: 30030
