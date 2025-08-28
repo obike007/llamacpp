@@ -20,7 +20,6 @@ spec:
       labels:
         app: llamacpp
     spec:
-      # Speed up pod scheduling
       tolerations:
       - key: "node.kubernetes.io/not-ready"
         operator: "Exists"
@@ -34,7 +33,6 @@ spec:
       initContainers:
       - name: model-downloader
         image: curlimages/curl:latest
-        # Add resource limits to prevent init container from consuming too many resources
         resources:
           requests:
             memory: "128Mi"
@@ -57,7 +55,6 @@ spec:
             echo "Model not found. Downloading from HuggingFace..."
             echo "This may take several minutes for a ~4GB file..."
             
-            # Download with progress and resume capability
             curl -L --fail --show-error --progress-bar \
                  --connect-timeout 30 \
                  --max-time 1200 \
@@ -65,11 +62,9 @@ spec:
                  -o "$MODEL_FILE.tmp" \
                  "$MODEL_URL"
             
-            # Atomic move to prevent partial files
             mv "$MODEL_FILE.tmp" "$MODEL_FILE"
             echo "Download complete! Final size: $(ls -lh "$MODEL_FILE" | awk '{print $5}')"
             
-            # Verify file is not empty/corrupted
             if [ ! -s "$MODEL_FILE" ]; then
               echo "ERROR: Downloaded file is empty!"
               exit 1
@@ -83,7 +78,6 @@ spec:
         image: DOCKER_HUB_USERNAME/llamacpp-server:IMAGE_TAG
         imagePullPolicy: IfNotPresent
         
-        # Resource limits for predictable scheduling
         resources:
           requests:
             memory: "1Gi"
@@ -102,35 +96,30 @@ spec:
         - name: HOST
           value: "0.0.0.0"
         
-        # Health checks - adjust paths based on your llamacpp server endpoints
         livenessProbe:
-          httpGet:
-            path: /health
+          tcpSocket:
             port: 8084
-          initialDelaySeconds: 60  # Give time for model loading
+          initialDelaySeconds: 120
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 3
         
         readinessProbe:
-          httpGet:
-            path: /health
+          tcpSocket:
             port: 8084
-          initialDelaySeconds: 10
+          initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
           successThreshold: 1
           failureThreshold: 5
         
-        # Startup probe - critical for slow-loading ML models
         startupProbe:
-          httpGet:
-            path: /health
+          tcpSocket:
             port: 8084
-          initialDelaySeconds: 30
+          initialDelaySeconds: 60
           periodSeconds: 10
           timeoutSeconds: 5
-          failureThreshold: 60  # 60 * 10s = 10 minutes max startup time
+          failureThreshold: 60
         
         volumeMounts:
         - name: config
@@ -138,9 +127,8 @@ spec:
           readOnly: true
         - name: model-storage
           mountPath: /models
-          readOnly: true  # Models should be read-only after download
+          readOnly: true
         
-        # Graceful shutdown for model cleanup
         lifecycle:
           preStop:
             exec:
@@ -154,11 +142,9 @@ spec:
         persistentVolumeClaim:
           claimName: model-storage
       
-      # Faster pod startup and termination
       restartPolicy: Always
       terminationGracePeriodSeconds: 30
       
-      # Ensure pods are distributed across nodes if possible
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -170,64 +156,4 @@ spec:
                   operator: In
                   values:
                   - llamacpp
-              topologyKey: kubernetes.io/hostname: apps/v1
-kind: Deployment
-metadata:
-  name: llamacpp
-  namespace: llama-app
-  labels:
-    app: llamacpp
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: llamacpp
-  template:
-    metadata:
-      labels:
-        app: llamacpp
-    spec:
-      initContainers:
-      - name: model-downloader
-        image: curlimages/curl:latest
-        command: ['sh', '-c']
-        args:
-          - |
-            if [ ! -f /models/model.gguf ]; then
-              echo "Model not found. Downloading..."
-              curl -L -o /models/model.gguf \
-                "https://huggingface.co/TheBloke/Llama-2-7B-GGUF/resolve/main/llama-2-7b.Q4_K_M.gguf"
-              echo "Download complete!"
-            else
-              echo "Model already exists at /models/model.gguf"
-            fi
-            ls -lh /models/
-        volumeMounts:
-        - name: model-storage
-          mountPath: /models
-      containers:
-      - name: llamacpp-server
-        image: DOCKER_HUB_USERNAME/llamacpp-server:IMAGE_TAG
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 8084
-          name: http
-        env:
-        - name: PORT
-          value: "8084"
-        - name: HOST
-          value: "0.0.0.0"
-        volumeMounts:
-        - name: config
-          mountPath: /app/config
-          readOnly: true
-        - name: model-storage
-          mountPath: /models
-          readOnly: false
-      volumes:
-      - name: config
-        configMap:
-          name: llamacpp-config
-      - name: model-storage
-        persistentVolumeClaim:
-          claimName: model-storage
+              topologyKey: kubernetes.io/hostname
