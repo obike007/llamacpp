@@ -35,6 +35,16 @@ data:
         action: replace
         target_label: kubernetes_pod_name
     
-    - job_name: 'llamacpp'
+    - job_name: 'llamacpp-api'
       static_configs:
-      - targets: ['llamacpp-service.llama-app.svc.cluster.local:8084']
+      - targets: ['10.96.82.172:8084']
+      scrape_interval: 30s
+      metrics_path: /health
+      scrape_timeout: 10s
+    
+    - job_name: 'llamacpp-metrics'
+      static_configs:
+      - targets: ['10.96.82.172:9090']
+      scrape_interval: 15s
+      metrics_path: /metrics
+      scrape_timeout: 10s
