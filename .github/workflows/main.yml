@@ -194,8 +194,12 @@ jobs:
       run: |
         echo "🚀 Deploying llamacpp application..."
         
-        # Create optimized deployment without init container
-        cat > kubernetes/deployment-fast.yaml <<EOF
+        # Update your existing deployment.yaml file
+        sed -i "s|IMAGE_TAG|${{ github.sha }}|g" kubernetes/deployment.yaml
+        sed -i "s|DOCKER_HUB_USERNAME|${{ secrets.DOCKER_HUB_USERNAME }}|g" kubernetes/deployment.yaml
+        
+        # Create optimized version without init container (overwrites existing)
+        cat > kubernetes/deployment.yaml <<EOF
         apiVersion: apps/v1
         kind: Deployment
         metadata:
@@ -289,9 +293,9 @@ jobs:
                       topologyKey: kubernetes.io/hostname
         EOF
         
-        # Apply manifests
+        # Apply manifests (using your existing files)
         kubectl apply -f kubernetes/configmap.yaml
-        kubectl apply -f kubernetes/deployment-fast.yaml
+        kubectl apply -f kubernetes/deployment.yaml
         kubectl apply -f kubernetes/service.yaml
         
         # Wait for deployment
