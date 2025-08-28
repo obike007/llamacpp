@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersisatentVolumeClaim
+metadata:
+  name: model-storage
+  namespace: llama-app
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
