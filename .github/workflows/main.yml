@@ -77,31 +77,260 @@ jobs:
         verbosity: 0
         kubectl_version: v1.23.12
 
-    - name: Deploy application
+    # NEW OPTIMIZED DEPLOYMENT STEPS
+    - name: Setup Kubernetes Infrastructure
       run: |
-          # Update image tag in deployment
-          sed -i "s|IMAGE_TAG|${{ github.sha }}|g" kubernetes/deployment.yaml
-          sed -i "s|DOCKER_HUB_USERNAME|${{ secrets.DOCKER_HUB_USERNAME }}|g" kubernetes/deployment.yaml
-          
-          # Apply Kubernetes manifests
-          kubectl apply -f kubernetes/namespace.yaml
-          kubectl apply -f kubernetes/configmap.yaml
-          kubectl apply -f kubernetes/deployment.yaml
-          kubectl apply -f kubernetes/service.yaml
-          
-          # Wait for deployment with better timeout
-          echo "Waiting for deployment to be ready..."
-          kubectl wait --for=condition=available --timeout=600s \
-            deployment/llamacpp -n llama-app || {
-            echo "Deployment failed, checking status..."
-            kubectl get pods -n llama-app
-            kubectl describe pods -n llama-app
-            kubectl logs -n llama-app -l app=llamacpp --tail=100
-            exit 1
-          }
-          
-          echo "Deployment successful!"
-          kubectl get pods -n llama-app
+        echo "Setting up namespace and storage..."
+        
+        # Apply namespace
+        kubectl apply -f kubernetes/namespace.yaml
+        
+        # Create PVC for model storage
+        kubectl apply -f - <<EOF
+        apiVersion: v1
+        kind: PersistentVolumeClaim
+        metadata:
+          name: model-storage
+          namespace: llama-app
+          labels:
+            app: llamacpp
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 10Gi
+        EOF
+        
+        echo "✅ Infrastructure setup complete"
+
+    - name: Download Model
+      timeout-minutes: 20
+      run: |
+        # Create unique job name
+        JOB_NAME="model-download-${{ github.run_number }}"
+        
+        echo "Creating model download job: $JOB_NAME"
+        
+        kubectl apply -f - <<EOF
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: $JOB_NAME
+          namespace: llama-app
+          labels:
+            app: llamacpp
+            job-type: model-download
+            run-id: "${{ github.run_number }}"
+        spec:
+          ttlSecondsAfterFinished: 300
+          template:
+            spec:
+              restartPolicy: Never
+              containers:
+              - name: model-downloader
+                image: curlimages/curl:latest
+                resources:
+                  requests:
+                    memory: "128Mi"
+                    cpu: "100m"
+                  limits:
+                    memory: "256Mi"
+                    cpu: "500m"
+                command: ['sh', '-c']
+                args:
+                - |
+                  set -e
+                  MODEL_FILE="/models/model.gguf"
+                  MODEL_URL="https://huggingface.co/TheBloke/Llama-2-7B-GGUF/resolve/main/llama-2-7b.Q4_K_M.gguf"
+                  
+                  echo "=== Model Download Job Started ==="
+                  echo "Job: $JOB_NAME"
+                  echo "Target: \$MODEL_FILE" 
+                  echo "Time: \$(date)"
+                  
+                  if [ -f "\$MODEL_FILE" ] && [ -s "\$MODEL_FILE" ]; then
+                    SIZE=\$(ls -lh "\$MODEL_FILE" | awk '{print \$5}')
+                    echo "✅ Model exists: \$SIZE - Skipping download"
+                    exit 0
+                  fi
+                  
+                  echo "📥 Downloading model (~4GB, may take 5-15 minutes)..."
+                  curl -L --fail --show-error --progress-bar \
+                       --connect-timeout 30 --max-time 1200 --retry 3 \
+                       -C - -o "\$MODEL_FILE.tmp" "\$MODEL_URL"
+                  
+                  mv "\$MODEL_FILE.tmp" "\$MODEL_FILE"
+                  
+                  if [ ! -s "\$MODEL_FILE" ]; then
+                    echo "❌ ERROR: Download failed!"
+                    exit 1
+                  fi
+                  
+                  echo "✅ Download complete: \$(ls -lh "\$MODEL_FILE" | awk '{print \$5}')"
+                volumeMounts:
+                - name: model-storage
+                  mountPath: /models
+              volumes:
+              - name: model-storage
+                persistentVolumeClaim:
+                  claimName: model-storage
+          backoffLimit: 2
+        EOF
+        
+        echo "⏳ Waiting for model download..."
+        kubectl wait --for=condition=complete --timeout=1200s job/$JOB_NAME -n llama-app || {
+          echo "❌ Download failed - showing logs:"
+          kubectl logs job/$JOB_NAME -n llama-app
+          kubectl describe job $JOB_NAME -n llama-app
+          exit 1
+        }
+        
+        echo "✅ Model ready!"
+        kubectl logs job/$JOB_NAME -n llama-app --tail=5
+
+    - name: Deploy Application
+      timeout-minutes: 5
+      run: |
+        echo "🚀 Deploying llamacpp application..."
+        
+        # Create optimized deployment without init container
+        cat > kubernetes/deployment-fast.yaml <<EOF
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: llamacpp
+          namespace: llama-app
+          labels:
+            app: llamacpp
+        spec:
+          replicas: 2
+          strategy:
+            type: RollingUpdate
+            rollingUpdate:
+              maxUnavailable: 0
+              maxSurge: 1
+          selector:
+            matchLabels:
+              app: llamacpp
+          template:
+            metadata:
+              labels:
+                app: llamacpp
+            spec:
+              containers:
+              - name: llamacpp-server
+                image: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+                imagePullPolicy: IfNotPresent
+                ports:
+                - containerPort: 8084
+                  name: http
+                env:
+                - name: PORT
+                  value: "8084"
+                - name: HOST
+                  value: "0.0.0.0"
+                resources:
+                  requests:
+                    memory: "1Gi"
+                    cpu: "500m"
+                  limits:
+                    memory: "4Gi"
+                    cpu: "2000m"
+                readinessProbe:
+                  tcpSocket:
+                    port: 8084
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                  failureThreshold: 3
+                livenessProbe:
+                  tcpSocket:
+                    port: 8084
+                  initialDelaySeconds: 60
+                  periodSeconds: 30
+                  failureThreshold: 3
+                startupProbe:
+                  tcpSocket:
+                    port: 8084
+                  initialDelaySeconds: 15
+                  periodSeconds: 10
+                  failureThreshold: 30  # 5 minutes max for model loading
+                volumeMounts:
+                - name: config
+                  mountPath: /app/config
+                  readOnly: true
+                - name: model-storage
+                  mountPath: /models
+                  readOnly: true
+                lifecycle:
+                  preStop:
+                    exec:
+                      command: ["/bin/sh", "-c", "sleep 15"]
+              volumes:
+              - name: config
+                configMap:
+                  name: llamacpp-config
+              - name: model-storage
+                persistentVolumeClaim:
+                  claimName: model-storage
+              restartPolicy: Always
+              terminationGracePeriodSeconds: 30
+              affinity:
+                podAntiAffinity:
+                  preferredDuringSchedulingIgnoredDuringExecution:
+                  - weight: 100
+                    podAffinityTerm:
+                      labelSelector:
+                        matchExpressions:
+                        - key: app
+                          operator: In
+                          values:
+                          - llamacpp
+                      topologyKey: kubernetes.io/hostname
+        EOF
+        
+        # Apply manifests
+        kubectl apply -f kubernetes/configmap.yaml
+        kubectl apply -f kubernetes/deployment-fast.yaml
+        kubectl apply -f kubernetes/service.yaml
+        
+        # Wait for deployment
+        echo "⏳ Waiting for deployment..."
+        kubectl wait --for=condition=available --timeout=300s deployment/llamacpp -n llama-app || {
+          echo "❌ Deployment failed:"
+          kubectl get pods -n llama-app -o wide
+          kubectl describe pods -n llama-app -l app=llamacpp
+          kubectl logs -n llama-app -l app=llamacpp --tail=50
+          exit 1
+        }
+        
+        echo "✅ Deployment successful!"
+        kubectl get pods -n llama-app -o wide
+
     - name: Deploy monitoring stack
       run: |
-        bash scripts/setup-monitoring.sh || echo "Monitoring setup failed, continuing..."
+        echo "📊 Setting up monitoring..."
+        bash scripts/setup-monitoring.sh || echo "⚠️  Monitoring setup failed, continuing..."
+
+    - name: Cleanup old jobs
+      if: always()
+      run: |
+        echo "🧹 Cleaning up old download jobs..."
+        # Keep only 3 most recent model download jobs
+        kubectl get jobs -n llama-app -l job-type=model-download \
+          --sort-by=.metadata.creationTimestamp \
+          -o jsonpath='{range .items[:-3]}{.metadata.name}{"\n"}{end}' \
+        | xargs -r kubectl delete job -n llama-app || echo "No jobs to clean"
+        echo "✅ Cleanup completed"
+
+    - name: Show final status
+      if: always()
+      run: |
+        echo "🔍 Final deployment status:"
+        kubectl get all -n llama-app
+        echo ""
+        echo "📋 Application endpoints:"
+        kubectl get svc -n llama-app
+        echo ""
+        echo "💾 Storage status:"
+        kubectl get pvc -n llama-app
