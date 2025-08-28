@@ -370,9 +370,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **📧 Email**: [your-email@domain.com](mailto:your-email@domain.com)
-- **💬 Discord**: [Join our server](https://discord.gg/your-invite)
-- **📱 Twitter**: [@yourhandle](https://twitter.com/yourhandle)
+- **📧 Email**: obike007@gmail.com
 
 ---
 
@@ -380,9 +378,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **⭐ Star this repo if it helped you!**
 
-[![GitHub stars](https://img.shields.io/github/stars/yourusername/llamacpp-k8s.svg?style=social&label=Star)](https://github.com/yourusername/llamacpp-k8s/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/yourusername/llamacpp-k8s.svg?style=social&label=Fork)](https://github.com/yourusername/llamacpp-k8s/network)
+[![GitHub stars](https://img.shields.io/github/stars/obike007/llamacpp-k8s.svg?style=social&label=Star)](https://github.com/obike007/llamacpp-k8s/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/obike007/llamacpp-k8s.svg?style=social&label=Fork)](https://github.com/obike007/llamacpp-k8s/network)
 
-Made with ❤️ by [Your Name](https://github.com/yourusername)
+Made with ❤️ by Michael Obinna(https://github.com/obike007)
 
 </div>
