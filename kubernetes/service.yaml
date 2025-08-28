@@ -12,5 +12,9 @@ spec:
     targetPort: 8084
     nodePort: 30083
     name: http
+  - port: 9090
+    targetPort: 9090
+    # nodePort: auto-assigned
+    name: metrics
   selector:
     app: llamacpp
