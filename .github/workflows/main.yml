@@ -194,109 +194,37 @@ jobs:
       run: |
         echo "🚀 Deploying llamacpp application..."
         
-        # Update your existing deployment.yaml file
+        # Update image references in your existing deployment
         sed -i "s|IMAGE_TAG|${{ github.sha }}|g" kubernetes/deployment.yaml
         sed -i "s|DOCKER_HUB_USERNAME|${{ secrets.DOCKER_HUB_USERNAME }}|g" kubernetes/deployment.yaml
         
-        # Create optimized version without init container (overwrites existing)
-        cat > kubernetes/deployment.yaml <<EOF
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: llamacpp
-          namespace: llama-app
-          labels:
-            app: llamacpp
-        spec:
-          replicas: 2
-          strategy:
-            type: RollingUpdate
-            rollingUpdate:
-              maxUnavailable: 0
-              maxSurge: 1
-          selector:
-            matchLabels:
-              app: llamacpp
-          template:
-            metadata:
-              labels:
-                app: llamacpp
-            spec:
-              containers:
-              - name: llamacpp-server
-                image: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-                imagePullPolicy: IfNotPresent
-                ports:
-                - containerPort: 8084
-                  name: http
-                env:
-                - name: PORT
-                  value: "8084"
-                - name: HOST
-                  value: "0.0.0.0"
-                resources:
-                  requests:
-                    memory: "1Gi"
-                    cpu: "500m"
-                  limits:
-                    memory: "4Gi"
-                    cpu: "2000m"
-                readinessProbe:
-                  tcpSocket:
-                    port: 8084
-                  initialDelaySeconds: 30
-                  periodSeconds: 10
-                  failureThreshold: 3
-                livenessProbe:
-                  tcpSocket:
-                    port: 8084
-                  initialDelaySeconds: 60
-                  periodSeconds: 30
-                  failureThreshold: 3
-                startupProbe:
-                  tcpSocket:
-                    port: 8084
-                  initialDelaySeconds: 15
-                  periodSeconds: 10
-                  failureThreshold: 30  # 5 minutes max for model loading
-                volumeMounts:
-                - name: config
-                  mountPath: /app/config
-                  readOnly: true
-                - name: model-storage
-                  mountPath: /models
-                  readOnly: true
-                lifecycle:
-                  preStop:
-                    exec:
-                      command: ["/bin/sh", "-c", "sleep 15"]
-              volumes:
-              - name: config
-                configMap:
-                  name: llamacpp-config
-              - name: model-storage
-                persistentVolumeClaim:
-                  claimName: model-storage
-              restartPolicy: Always
-              terminationGracePeriodSeconds: 30
-              affinity:
-                podAntiAffinity:
-                  preferredDuringSchedulingIgnoredDuringExecution:
-                  - weight: 100
-                    podAffinityTerm:
-                      labelSelector:
-                        matchExpressions:
-                        - key: app
-                          operator: In
-                          values:
-                          - llamacpp
-                      topologyKey: kubernetes.io/hostname
-        EOF
+        # Temporarily remove init container section since model is pre-downloaded
+        echo "Creating optimized deployment without init container..."
         
-        # Apply manifests (using your existing files)
+        # Use sed to remove the initContainers section
+        sed -i '/initContainers:/,/^      containers:/{ /^      containers:/!d; }' kubernetes/deployment.yaml
+        
+        # Show what we're deploying
+        echo "📋 Deployment preview:"
+        head -20 kubernetes/deployment.yaml
+        
+        # Apply manifests using your existing files
         kubectl apply -f kubernetes/configmap.yaml
         kubectl apply -f kubernetes/deployment.yaml
         kubectl apply -f kubernetes/service.yaml
+        
+        # Wait for deployment
+        echo "⏳ Waiting for deployment..."
+        kubectl wait --for=condition=available --timeout=300s deployment/llamacpp -n llama-app || {
+          echo "❌ Deployment failed:"
+          kubectl get pods -n llama-app -o wide
+          kubectl describe pods -n llama-app -l app=llamacpp
+          kubectl logs -n llama-app -l app=llamacpp --tail=50
+          exit 1
+        }
+        
+        echo "✅ Deployment successful!"
+        kubectl get pods -n llama-app -o wide
         
         # Wait for deployment
         echo "⏳ Waiting for deployment..."
