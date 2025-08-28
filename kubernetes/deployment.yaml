@@ -6,7 +6,7 @@ metadata:
   labels:
     app: llamacpp
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: llamacpp
@@ -15,43 +15,47 @@ spec:
       labels:
         app: llamacpp
     spec:
+      initContainers:
+      - name: model-downloader
+        image: curlimages/curl:latest
+        command: ['sh', '-c']
+        args:
+          - |
+            if [ ! -f /models/model.gguf ]; then
+              echo "Model not found. Downloading..."
+              curl -L -o /models/model.gguf \
+                "https://huggingface.co/TheBloke/Llama-2-7B-GGUF/resolve/main/llama-2-7b.Q4_K_M.gguf"
+              echo "Download complete!"
+            else
+              echo "Model already exists at /models/model.gguf"
+            fi
+            ls -lh /models/
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
       containers:
       - name: llamacpp-server
         image: DOCKER_HUB_USERNAME/llamacpp-server:IMAGE_TAG
+        imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 8080
+        - containerPort: 8084
           name: http
         env:
         - name: PORT
-          value: "8080"
+          value: "8084"
         - name: HOST
           value: "0.0.0.0"
-        # Temporarily disable resource limits for debugging
-        # resources:
-        #   requests:
-        #     memory: "512Mi"
-        #     cpu: "250m"
-        #   limits:
-        #     memory: "2Gi"
-        #     cpu: "1000m"
-        # Temporarily disable health checks for debugging
-        # livenessProbe:
-        #   httpGet:
-        #     path: /health
-        #     port: 8080
-        #   initialDelaySeconds: 30
-        #   periodSeconds: 10
-        # readinessProbe:
-        #   httpGet:
-        #     path: /health
-        #     port: 8080
-        #   initialDelaySeconds: 5
-        #   periodSeconds: 5
         volumeMounts:
         - name: config
           mountPath: /app/config
           readOnly: true
+        - name: model-storage
+          mountPath: /models
+          readOnly: false
       volumes:
       - name: config
         configMap:
           name: llamacpp-config
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: model-storage
