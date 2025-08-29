@@ -102,7 +102,7 @@ jobs:
               storage: 10Gi
         EOF
         
-        echo "✅ Infrastructure setup complete"
+        echo "Infrastructure setup complete"
 
     - name: Download Model
       timeout-minutes: 20
@@ -151,7 +151,7 @@ jobs:
                   
                   if [ -f "\$MODEL_FILE" ] && [ -s "\$MODEL_FILE" ]; then
                     SIZE=\$(ls -lh "\$MODEL_FILE" | awk '{print \$5}')
-                    echo "✅ Model exists: \$SIZE - Skipping download"
+                    echo "Model exists: \$SIZE - Skipping download"
                     exit 0
                   fi
                   
@@ -163,11 +163,11 @@ jobs:
                   mv "\$MODEL_FILE.tmp" "\$MODEL_FILE"
                   
                   if [ ! -s "\$MODEL_FILE" ]; then
-                    echo "❌ ERROR: Download failed!"
+                    echo "ERROR: Download failed!"
                     exit 1
                   fi
                   
-                  echo "✅ Download complete: \$(ls -lh "\$MODEL_FILE" | awk '{print \$5}')"
+                  echo "Download complete: \$(ls -lh "\$MODEL_FILE" | awk '{print \$5}')"
                 volumeMounts:
                 - name: model-storage
                   mountPath: /models
@@ -180,19 +180,19 @@ jobs:
         
         echo "⏳ Waiting for model download..."
         kubectl wait --for=condition=complete --timeout=1200s job/$JOB_NAME -n llama-app || {
-          echo "❌ Download failed - showing logs:"
+          echo "Download failed - showing logs:"
           kubectl logs job/$JOB_NAME -n llama-app
           kubectl describe job $JOB_NAME -n llama-app
           exit 1
         }
         
-        echo "✅ Model ready!"
+        echo "Model ready!"
         kubectl logs job/$JOB_NAME -n llama-app --tail=5
 
     - name: Deploy Application
       timeout-minutes: 5
       run: |
-        echo "🚀 Deploying llamacpp application..."
+        echo "Deploying llamacpp application..."
         
         # Update image references in your existing deployment
         sed -i "s|IMAGE_TAG|${{ github.sha }}|g" kubernetes/deployment.yaml
@@ -205,7 +205,7 @@ jobs:
         sed -i '/initContainers:/,/^      containers:/{ /^      containers:/!d; }' kubernetes/deployment.yaml
         
         # Show what we're deploying
-        echo "📋 Deployment preview:"
+        echo "Deployment preview:"
         head -20 kubernetes/deployment.yaml
         
         # Apply manifests using your existing files
@@ -214,55 +214,55 @@ jobs:
         kubectl apply -f kubernetes/service.yaml
         
         # Wait for deployment
-        echo "⏳ Waiting for deployment..."
+        echo "Waiting for deployment..."
         kubectl wait --for=condition=available --timeout=300s deployment/llamacpp -n llama-app || {
-          echo "❌ Deployment failed:"
+          echo "Deployment failed:"
           kubectl get pods -n llama-app -o wide
           kubectl describe pods -n llama-app -l app=llamacpp
           kubectl logs -n llama-app -l app=llamacpp --tail=50
           exit 1
         }
         
-        echo "✅ Deployment successful!"
+        echo "Deployment successful!"
         kubectl get pods -n llama-app -o wide
         
         # Wait for deployment
-        echo "⏳ Waiting for deployment..."
+        echo "Waiting for deployment..."
         kubectl wait --for=condition=available --timeout=300s deployment/llamacpp -n llama-app || {
-          echo "❌ Deployment failed:"
+          echo "Deployment failed:"
           kubectl get pods -n llama-app -o wide
           kubectl describe pods -n llama-app -l app=llamacpp
           kubectl logs -n llama-app -l app=llamacpp --tail=50
           exit 1
         }
         
-        echo "✅ Deployment successful!"
+        echo "Deployment successful!"
         kubectl get pods -n llama-app -o wide
 
     - name: Deploy monitoring stack
       run: |
-        echo "📊 Setting up monitoring..."
-        bash scripts/setup-monitoring.sh || echo "⚠️  Monitoring setup failed, continuing..."
+        echo "Setting up monitoring..."
+        bash scripts/setup-monitoring.sh || echo "Monitoring setup failed, continuing..."
 
     - name: Cleanup old jobs
       if: always()
       run: |
-        echo "🧹 Cleaning up old download jobs..."
+        echo "Cleaning up old download jobs..."
         # Keep only 3 most recent model download jobs
         kubectl get jobs -n llama-app -l job-type=model-download \
           --sort-by=.metadata.creationTimestamp \
           -o jsonpath='{range .items[:-3]}{.metadata.name}{"\n"}{end}' \
         | xargs -r kubectl delete job -n llama-app || echo "No jobs to clean"
-        echo "✅ Cleanup completed"
+        echo "Cleanup completed"
 
     - name: Show final status
       if: always()
       run: |
-        echo "🔍 Final deployment status:"
+        echo "Final deployment status:"
         kubectl get all -n llama-app
         echo ""
-        echo "📋 Application endpoints:"
+        echo "Application endpoints:"
         kubectl get svc -n llama-app
         echo ""
-        echo "💾 Storage status:"
+        echo "Storage status:"
         kubectl get pvc -n llama-app
